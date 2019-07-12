@@ -97,7 +97,7 @@
     - [性能](#%E6%80%A7%E8%83%BD)
     - [部署](#%E9%83%A8%E7%BD%B2)
 - [ES6](#ES6)
-  - [11.Promise与异步变成](#11Promise%E4%B8%8E%E5%BC%82%E6%AD%A5%E5%8F%98%E6%88%90)
+  - [11.Promise与异步编程](#11Promise%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BC%96%E7%A8%8B)
     - [异步编程](#%E5%BC%82%E6%AD%A5%E7%BC%96%E7%A8%8B)
     - [Promise基础](#Promise%E5%9F%BA%E7%A1%80)
     - [全局的Promise拒绝处理](#%E5%85%A8%E5%B1%80%E7%9A%84Promise%E6%8B%92%E7%BB%9D%E5%A4%84%E7%90%86)
@@ -1180,7 +1180,10 @@
   - 现在几乎已经全部支持DOM2级事件了
 ### 事件对象
 - DOM中的事件对象
+  - 兼容DOM的浏览器会将一个event对象传入到事件处理程序中，一旦处理程序执行完成，event对象就会被销毁
 - IE中的事件对象
+  - DOM0级：window.event
+  - attachEvent: event
 - 跨浏览器的事件对象
 ### 事件类型
 - UI事件
@@ -1446,27 +1449,372 @@ function createXHR(){
 ### 部署
 
 # ES6
-## 11.Promise与异步变成
+## 11.Promise与异步编程
 ### 异步编程
+- 什么是异步编程
+  - JavaScript引擎是基于单线程事件循环概念构建的
+  - 任务队列：JavaScript引擎同一时刻只能执行一个代码块，所以需要跟踪即将运行的代码，所以任务队列就是用来存储这些即将运行的代码，让他们排成一个队列，每当一段代码准备执行时，都会被添加到任务队列中，
+  - 事件循环：负责监控代码执行并管理任务队列
+  - [JavaScript 异步、栈、事件循环、任务队列](https://segmentfault.com/a/1190000011198232)
 - 事件模型
+  - 见JavaScript高级程序设计中介绍的 [事件](#13.事件)
+  - 事件模型适用于处理简单的交互，因为无法总是保证事件处理程序在事件触发之前已经加载完成( 即用户可能在onclick函数没加载完成之前就已经在疯狂点击button了)
 - 回调模式
+  - 回调模式中被调用的函数作为参数传入
+  - 问题：回调地狱难以理解和调试
 ### Promise基础
+- 什么是Promise
+  - 相当于异步操作结果的占位符，它不去订阅事件，也不传递一个回调函数，而是让函数返回一个Promise
+    ```javascript
+    var promise = readFile("helloworld.txt")
+    //代码开始时，readFile()不会立即开始读取文件，首先会返回一个Promise对象表示异步读取操作
+    //未来如何操作这个对象取决于Promise的生命周期
+    ```
 - Promise的生命周期
+  - 生命周期
+    - 两个状态：未处理和已处理；三个状态：进行中、成功、失败
+      - unsettled   未处理
+        - pending   进行中
+      - settled     已处理
+        - fulfilled 成功
+        - rejected  失败
+  - [[PromiseState]]内部属性来表示Promise的三个状态，无法访问
+  - then()方法
+    - Promise对象通过then()方法来根据特定状态执行特定操作
+    - 参数
+      - 第一个参数是当promise状态为fulfilled时调用的函数
+      - 第二个参数是当promise状态为rejected时调用的函数
+      - 两个参数都是可选的
+    - thenable对象
+      - 一个对象实现了then方法，就可以称之为thenable对象
+      - 所有Promise对象都是thenable对象，反之不然
+  - catch()方法
+    - 和只传入拒绝处理程序的then()方法等价  
+        ```javascript
+        promise.catch(function(err){
+            console.error(err.message)
+        })
+        //等价于
+        promise.then(null, function(err){
+            console.error(err.message)
+        })
+        ```
+  - 每次调用then()方法或catch()方法都会创建一个新任务，当promise被解决时执行，这些任务会被加入到一个为promise量身定制的独立任务队列
 - 创建未完成的Promise
+  - 用Promise构造函数创建Promise
+    - 构造函数只接受一个参数：包含初始化Promise代码的执行器(executor)函数
+    - 执行器函数接受两个参数：resolve函数(执行器成功时调用)和reject函数(执行器失败时调用)
+     ```javascript
+    let fs = require('fs');
+    function readFile(filename) {
+        let exec = function(resolve, reject) {
+            //触发异步操作
+            fs.readFile(filename, { encoding: "utf-8" }, function(err, contents) {
+                //检查是否有错误
+                if (err) {
+                    reject(err)
+                    return
+                }
+                //成功读取文件
+                resolve(contents)
+            })
+        }
+        return new Promise(exec)
+    }
+
+    let promise = readFile("example.txt")
+    
+    promise.then(function(contents) {
+        console.log(contents)
+    }, function(err) {
+        console.error(err.message)
+    })
+     ```
+    - Promise的执行器会立即执行,无论是调用了resolve还是reject，都会将一个新任务推入任务队列
+    ```javascript
+    let promise = new Promise(function(resolve, reject) {
+      console.log('promise')
+    })
+    console.log('window')
+    //promise
+    //window
+    setTimeOut(function() {
+        //也将新任务推入了任务队列，只不过要求这个任务在500ms后执行，所以比window后显示
+        console.log('setTimtout')
+    }, 500)
+    console.log('window')
+    //window
+    //setTimeout
+    ```
+    - 执行函数调用resolve()或reject()后，会触发一个异步操作，传入then方法的函数此时会被添加到任务队列中，并异步执行(可以理解成resolve()是一个发射器，promise.then()的第一个参数的函数是这个发射器的接收装置，这个函数的参数就是发射器传过来的参数)
+    ```javascript
+    let promise = new Promise(function(resolve, reject) {
+        console.log('promise')
+        resolve('resolve')
+    })
+    promise.then(function(c) {
+        //完成处理程序和拒绝处理程序总是在执行器完成后再被添加到任务队列的末尾
+        console.log(c)
+    })
+    console.log('window')
+    //promise
+    //window
+    //resolve
+
+    ```
+
 - 创建已处理的Promise
+  - 为什么要创建已处理的Promise
+    - 如果你还不知道给用Promise来表示什么值的时候，可以用new创建一个未处理的Promise
+    - 如果你知道要用Promise来表示什么值的时候，再大张旗鼓的new一个Promise，在Promise中加入执行器函数有点多余，所以这时候需要创建处于settled状态的Promise
+  - Promise.resolve()
+    - 只接受一个参数并返回一个完成状态的Promise
+    ```javascript
+    let promise = Promise.resolve(42)
+    promise.then(function(content) {
+        console.log(content) //42
+    })
+    ```
+  - Promise.reject()
+    - 只接受一个参数并返回已拒绝状态的Promise
+    ```javascript
+    let promise = Promise.reject(42)
+    promise.then(null, function(err) {
+        console.log(err) //42
+    })
+
+    promise.catch(function(err) {
+        console.log(err) //42
+    })
+    ```
+    - 如果向Promise.resove()或Promise.reject()传入一个Promise对象，会直接返回这个对象，可以用此方法来判断一个对象是不是Promise对象
+    - 如果向Promise.resolve()或Promise.reject()传入一个非Promise对象的Thenable对象，会创建一个新的Promise对象(Promise.resolve:pending状态;Promise.reject:rejected状态)，并在then函数中被调用
+  - 非Promise的Thenable对象
+    - 拥有一个接受resolve和reject这两个参数的方法并且这个方法名叫then方法的普通对象就是非Promise的Thenable对象
+    ```javascript
+    //1.使用Promise.resolve创建基于Thenable的已完成Promise
+    let thenable = {
+        then:function(resolve, reject) {
+            resolve(42)
+        }
+    }
+    //Promise.resolve调用的是thenable.then()，返回的是一个pending状态Promise
+    let p1 = Promise.resolve(thenable)
+    p1.then(function(c) {
+        //此时p1是一个pending状态Promise对象
+        console.log(c) //42
+    })
+    
+    //2.使用Promise.resolve创建基于Thenable的已拒绝Promise
+    let thenable = {
+        then:function(resolve, reject) {
+            reject(42)
+        }
+    }
+    //Promise.resolve调用的是thenable.then()，返回的是一个pending状态Promise
+    let p1 = Promise.resolve(thenable)
+    p1.catch(function(c) {
+        console.log(c) //42
+    })
+
+    //3.使用Promise.reject创建基于Thenable的已拒绝Promise
+    let thenable = {
+        then:function(resolve, reject) {
+            reject(42)
+        }
+    }
+    //Promise.reject会返回一个已拒绝状态的Promise对象
+    let p1 = Promise.reject(thenable)
+    p1.catch(function(c) {
+        console.log(c) //thenable对象
+    })
+
+    //4.使用Promise.reject创建基于Thenable的已完成Promise
+    let thenable = {
+        then:function(resolve, reject) {
+            resolve(42)
+        }
+    }
+    //Promise.reject会返回一个已拒绝状态的Promise对象
+    let p1 = Promise.reject(thenable)
+    p1.then(function(c) {
+        //由于p1此时已经是一个已拒绝状态的Promise对象
+        console.log(c) //UnHandlePromiseRejectionWarning
+    })
+    ```
 - 执行器错误
+  - 如果执行器内部抛出错误，则Promise的拒绝处理程序就会自动被调用
+    ```javascript
+    let promise = new Promise(function(resolve, reject) {
+        throw new Error('I am a Problem')
+    })
+    promise.catch(function(err) {
+        console.log(err.message) //I am a Problem
+    })
+
+
+    //原因是每个执行器中都隐藏了一个try-catch语句
+
+    let promise = new Promise(function(resolve, reject) {
+        try {
+            throw new Error('error')
+        } catch(ex) {
+            reject(ex)
+        }
+    })
+    ```
+
 ### 全局的Promise拒绝处理
+>如果在没有catch或then的拒绝处理程序的情况下拒绝一个Promise，不会提示失败信息
+```javascript
+let rejected = Promise.reject(42)
+// rejected此时还没有被处理，rejected此时是一个rejected状态的Promise对象
+//但是会报UnHandlePromiseRejectionWarning
+rejected.catch(function(err) {
+    //此时rejected已经被处理
+    console.log(err) //42
+})
+```
+>明明已经被Promise.reject()立即拒绝的Promise(按理来说已拒绝就是处理了)，可是我们知道要等到catch来处理才能真正算上Promise已处理(就很生硬，明明已经明文reject了)，但在不用catch/then之前却很难知道已拒绝的Promise何时被处理，所以引入全局拒绝处理
 - Node.js环境下
+  - 触发process对象上的两个事件：unhandledRejection和rejectionHandled
+  - 触发条件是：当Promise被拒绝，且没有拒绝处理程序(catch/then)时
+  - 目的：是为了识别那些已经被拒绝却还没被处理过的Promise
+  - unhandledRejection事件处理程序
+    - 接受两个参数，第一个参数是拒绝原因(错误对象)，第二个参数是已拒绝的Promise
+    ```javascript
+    let rejected
+    //监听unhandledRejection事件
+    process.on('unhandledRejection', function(reason, promise) {
+        console.log(reason.message == 'error') //true
+        console.log(promise == rejected) //true
+    })
+    rejected = Promise.reject(new Error('error'))
+    ```
+  - rejectionhandled事件处理程序
+    - 接受一个参数，已拒绝的Promise对象
+    - 触发：在拒绝处理程序最后被调用时触发(异步控制最后调用)，但在同步状态(即已拒绝的Promise和catch()在一个事件循环中)有拒绝处理程序时会被忽略。
+    ```javascript
+    let rejected = Promise.rejecte(new Error('error'))
+
+    process.on('rejectionHandled', function(promise) {
+        console.log(promise == rejected)  
+    })
+
+    setTimeout(function(){
+        rejected.catch(function(err) {
+            console.log(err.message) 
+        })
+    }, 1000)
+
+    //error
+    //true ，如果catch调用不在延时函数里，则不会触发rejectionHandled事件
+    ```
+  - 实现一个Node.js环境下简单的未处理拒绝跟踪器
+    ```javascript
+    let possiblyUnhandledRejections = new Map()
+    process.on('unhandledRejected', function(reason, promise) {
+        possiblyUnhandledRejections.set(promise, reason)
+    })
+
+    process.on('rejectionHandled', function(promise) {
+        possiblyUnhandledRejections.delete(promise)
+    })
+
+    setInterval(function() {
+
+        possiblyUnhandledRejections.forEach(function(reason, promise) {
+            console.log(reason.message ? reason.message : reason)
+            //做一些什么来处理这些拒绝
+            handleRejection(reason, promise)
+        })
+
+        possiblyUnhandledRejections.clean()
+    }, 60000)
+    ```
+
 - 浏览器环境下
+  - 通过触发两个在window对象上的事件来识别未处理的拒绝
+  - unhandledrejection和rejectionhandled:触发条件和Node.js环境下相同
+    - 值得注意的是，浏览器下的事件名和事件的差异，即事件名是不带'on'的，但window调用的事件处理程序即事件监听器是要带'on'的
+  - 与Node.js环境下差异
+    - 参数差异
+      - Node.js下是接受多个独立参数(reason, promise)
+      - 浏览器下是接受一个event对象，这个对象有以下属性
+        - type：事件名称(unhandledrejection或rejectionhandled)
+        - promise：被拒绝的promise对象
+        - reason：来自被拒绝的promise对象的拒绝值(即Promise.reject()或者执行器中的reject()括号中的拒绝值)
+    - 浏览器的两个事件都可以使用reason，而Node.js下handledRejection事件不能使用
+        ```javascript
+        let rejected
+        window.onunhandledrejection = function(event) {
+            console.log(event.type) //unhandledrejection
+            console.log(event.reason.message) //error
+            console.log(event.promise === rejected) //true
+        }
+
+        window.onrejectionhandled = function(event) {
+            console.log(event.type) //rejectionhandled
+            console.log(event.reason.message) //error
+            console.log(event.promise === rejected) true
+        }
+        rejected = Promise.reject(new Error('error'))
+        ```
+    - 实现一个简单的未处理拒绝跟踪器
+    ```javascript
+    let possiblyUnhandledRejections = new Map()
+    window.addEventListener('unhandledRejected', function(event) {
+        possiblyUnhandledRejections.set(event.promise, event.reason)
+    },false)
+
+    window.addEventListener('rejectionHandled', function(event) {
+        possiblyUnhandledRejections.delete(event.promise)
+    })
+
+    setInterval(function() {
+
+        possiblyUnhandledRejections.forEach(function(reason, promise) {
+            console.log(reason.message ? reason.message : reason)
+            //做一些什么来处理这些拒绝
+            handleRejection(reason, promise)
+        })
+
+        possiblyUnhandledRejections.clean()
+    }, 60000)
+    ```
 ### 串联Promise
+- 为什么能串联
+  - 因为每次调用then或catch时返回一个新的Promise，只有当第一个Promise被处理后，第二个甚至更多才会被处理
+    ```javascript
+    let p1 = new Promise(function(resolve, reject) {
+        resolve(42)
+    })
+
+    p1.then(function(content) {
+        console.log(content)
+    }).then(function() {
+        console.log('then2')
+    })
+
+    //42
+    //then2
+    ```
 - 捕获错误
+  - 务必在Promise链的末尾留一个拒绝处理程序以确保能够正确处理所有可能发生的错误
 - Promise链的返回值
+  - Promise链的一个重要特性就是可以使用return给下游的Promise传递数据
 - 在Promise链中返回Promise
+  - 可以将Promise对象return给下一个处理程序，这个Promise对象可以在全局定义，也可以在当前处理程序内部定义
 ### 响应多个Promise
 - Promise.all()
+  - 接受一个参数，返回一个Promise
+  - 参数是一个含有多个受监控的Promise的可迭代对象(例如，一个数组)，只有当这个可迭代对象中所有的Promise对象被处理后，返回的Promise才会被处理，只有当所有的Promise对象resolved后，然后的Promise才会resolved，并且resolved的结果会按相同的迭代方式返回；rejected就直接返回reject()的那一个，后面的就不管了了
 - Promise.race()
+  - 顾名思义race就是竞赛，接受的参数和返回值和all()方法一模一样，但是只要有一个符合要求就直接返回，不会像all()一样，resolved就要等所有的resolved，返回一个resolved的可迭代方式，race()是只要谁第一个resolved的就返回这个，rejected也同理
 ### 自Promise继承
-### 基于Promise的异步任务执行 
+- Promise与其他内建类型一样，可以作为基类派生出其他类，所以可以自定义扩展内建Promise的功能
+### 基于Promise的异步任务执行
+- 返回去学习第九章生成器
  
 # 你不知道的JS
 ## 作用域和闭包
@@ -1888,7 +2236,7 @@ foo(2) //2
     + number
     + boolean
     + null
-        * 本身是基本类型，但type null //object
+        * 本身是基本类型，但typeof null //object
     + undefined
     + object
         * function
@@ -1900,7 +2248,7 @@ foo(2) //2
     + Object
     + Function
     + Array
-    + Regex
+    + RegEx
     + Error
     + Date
 
