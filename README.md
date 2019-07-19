@@ -97,6 +97,7 @@
     - [性能](#%E6%80%A7%E8%83%BD)
     - [部署](#%E9%83%A8%E7%BD%B2)
 - [ES6](#ES6)
+  - [8.迭代器(Iterator)和生成器(Generator)](#8%E8%BF%AD%E4%BB%A3%E5%99%A8Iterator%E5%92%8C%E7%94%9F%E6%88%90%E5%99%A8Generator)
   - [11.Promise与异步编程](#11Promise%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BC%96%E7%A8%8B)
     - [异步编程](#%E5%BC%82%E6%AD%A5%E7%BC%96%E7%A8%8B)
     - [Promise基础](#Promise%E5%9F%BA%E7%A1%80)
@@ -460,7 +461,6 @@
 - 检测类型
     + `typeof`方便检测基本类型
     + `instanceof`方便检测引用类型
-
 
 ### 执行环境及作用域
 - 产生：当某个函数被调用时，会创建一个执行环境及相应的作用域链，然后用arguments和其他命名参数的值来初始化活动对象
@@ -1105,6 +1105,7 @@
     ```
     - HTMl和JavaScript代码耦合
     - 受不同浏览器环境影响
+
 - DOM0级事件处理程序
   - 将一个函数赋值给一个元素对象的引用的属性，属性名和事件处理程序同名
     ```javascript
@@ -1118,6 +1119,7 @@
     - 跨浏览器
   - 删除事件
     - `btn.onclick = null;`
+
 - DOM2级事件处理程序
   - 定义了两种方法来处理事件：addEventListener()、removeEventListener()
   - 参数
@@ -1137,6 +1139,7 @@
     btn.addEventListener('cilck', handler2, false)//可以添加两个不同的click事件
     btn.removeEventListener('click', handler, false)//删除事件监听
     ```
+
 - IE事件处理程序
   - 实现了与DOM类似的两个方法：attachEvent()、detachEvent()
   - 参数
@@ -1146,6 +1149,7 @@
     - this指向window，DOM指向元素引用
     - 添加两个事件时，顺序是后添加的先执行，DOM是代码顺序执行
   - 支持IE事件处理程序的有IE和Opera
+
 - 跨浏览器的事件处理程序
   - 手写一个兼容各个浏览器的事件处理程序，三类：DOM2级、DOM0级、IE
   ```javascript
@@ -1362,59 +1366,204 @@
     ```
 
 ## 21.Ajax与Comet
+>Ajax技术的核心是XMLHttpRequest对象，简称XHR对象。XHR为向服务器发送请求和解析服务器响应提供了流畅的接口，通过接口取得新数据，再通过DOM将新数据插入到页面中。名字里虽然带有XML，但是Ajax通信与数据格式无关，这个技术的就是为了无须刷新页面即可从服务器取得数据，不一定是XML数据。
+
 ### XMLHttpRequest对象
-
-```javascript
-function createXHR(){
-    if(typeof arguments.callee.activeXString != "string"){
-        var versions = ["MSXML2.XMLHttp.6.0", "MSXML2.XMLHttp.3.0",
-                        "MSXML2.XMLHttp"],
-                        i,len;
-        for(i=0, len=version.length; i<len; i++){
-            try{
-                new ActiveXObject(version[i]);
-                arguments.callee.activeXString = version[i];
-                break;
-            } catch (ex){
-
+- XHR对象落地史
+  - 最早在IE5中(第一个引入XHR对象的浏览器)，XHR对象通过MSXML库中的一个ActiveX对象实现。因此IE中可能会遇到三种不同版本的XHR对象
+    ```javascript
+    function createXHRInIE5(){
+        if(typeof arguments.callee.activeXString != "string"){
+            var versions = ["MSXML2.XMLHttp.6.0", "MSXML2.XMLHttp.3.0",
+                            "MSXML2.XMLHttp"],
+                            i,len;
+            for(i=0, len=version.length; i<len; i++){
+                try{
+                    new ActiveXObject(version[i]);
+                    arguments.callee.activeXString = version[i];
+                    break;
+                } catch (ex){
+                    //
+                }
             }
         }
+        return new ActiveXObject(arguments.callee.activeXString);
     }
-    return new ActiveXObject(arguments.callee.activeXString);
-}
-```
+      ```
+  - IE7+、Firefox、Opera、Chrome、Safari支持原生XHR对象，可以通过使用XHR构造函数创建XHR对象
+    ```javascript
+    function createXHR() {
+        if (typeof XMLHttpRequest != "undefinded") {
+            return new XMLHttpRequest()
+        } else if (typeof ActiveObject != "undefinded") {
+            //平稳退化，向IE7- 兼容
+            createXHRInIE5()
+        } else {
+            throw new Error("No XHR object available.")
+        }
+    }
+
+    var xhr = new createXHR()
+    ```
+
 - XHR的用法
-  - open(),它接受3个参数
+  - open()
+    - 接受3个参数
       + 要发送的请求的类型
       + 请求的URL:相对于执行代码的当前页面(也可以使用绝对路径)
       + 表示是否异步发送请求的布尔值
       + `xhr.open("get", "example.php", false)`
-          * open()方法并不会真正发送请求，而只是启动一个请求以备发送。
-          * 只能向同一个域中使用相同端口和协议的URL发送请求。如果URL与启动请求页面有任何差别，都会引发安全错误
-      ```
-      xhr.open("get", "example.txt", false);
-      xhr.send(null)
-      ```
-  - send()，接收一个参数，
-     + 即要作为请求主题发送的数据。如果不需要通过请求主题发送数据，则必须传入null，因为这个参数对有些浏览器来说是必需的。调用send()之后，请求就会被分派到服务器。
-     + 收到响应后，响应的数据会自动填充XHR对象的属性，相关的属性简介如下
-         * `responseText`：作为响应主体被返回的文本
-         * `responseXML`：如果响应的内容类型是"text/xml"或"application/xml",这个属性中将保存着响应数据的XML DOM 文档
-         * `status`：响应的HTTP状态
-         * `statusText`：HTTP状态的说明
-
+    - 说明
+      * open()方法并不会真正发送请求，而只是启动一个请求以备发送。要发送特定请求，open之后还要send
+        ```javascript
+        xhr.open("get", "example.txt", false);
+        xhr.send(null)
+        ``` 
+      * URL不能跨域，只能向同一个域中使用相同端口和协议的URL发送请求。如果URL与启动请求页面有任何差别，都会引发安全错误
+     
+  - send()
+    - 接收一个参数
+      -  参数是一个要作为请求主体发送的数据。如果不需要通过请求主体发送数据，则必须传入null，因为这个参数对有些浏览器来说是必需的。
+    - 原理：
+      - 调用send()之后，请求(是一次同步请求)就会被分派到服务器。JavaScript代码会等到服务器响应之后再继续执行，收到响应后，响应的数据会自动填充XHR对象的属性，相关的属性简介如下
+        * `responseText`：作为响应主体被返回的文本
+        * `responseXML`：如果响应的内容类型是"text/xml"或"application/xml",这个属性中将保存着响应数据的XML DOM 文档
+        * `status`：响应的HTTP状态
+          * 一般将200作为成功的标志，此时responseText内容准备就绪
+          * 304，表示请求资源没有被修改，可以直接使用浏览器缓存的版本
+        * `statusText`：HTTP状态的说明
+        ```javascript
+        let xhr = new XMLHttpRequest()
+        xhr.open("get", "example.txt", false)
+        xhr.send(null)
+        //建议通过检测status来决定下一步操作，不要依赖statusText
+        if((xhr.status >= 200 && xhr.status < 300) || xhr.status ==304) {
+            
+            alert(xhr.responseText)
+        } else {
+            alert("Request was unsuccessful: " + xhr.status)
+        }
+        ``` 
+  - XHR.readyState属性
+    - 表示请求/响应过程的当前活动阶段
+      - 0：未初始化，尚未调用open方法
+      - 1：启动。已经调用open方法，尚未调用send方法
+      - 2：发送。已经调用send方法，但未接收到响应
+      - 3：接受。已接受到部分响应数据
+      - 4：完成。已接收到全部响应数据，而且已经可以在客户端使用了
+    - 每次活动阶段的改变，都会触发一次readystatechange事件
+      - 必须在调用open方法之前指定onreadystatechange事件处理程序才能确保跨浏览器兼容性
+        ```javascript
+        var xhr = new XMLHttpRequest
+        xhr.onstadystatechange = function() {
+            if (xhr.readyState == 4){
+                if((xhr.status >= 200 && xhr.status < 300) || xhr.status ==304) {
+            
+                    alert(xhr.responseText)
+                } else {
+                    alert("Request was unsuccessful: " + xhr.status)
+                }
+            }
+        }
+        xhr.open("get", "example.txt", false)
+        xhr.send(null)
+        ``` 
+  - abort()方法
+    - 在接收到响应之前可以调用abort方法来取消异步请求，即在`0<=readyState<=2`的时候
+    - 使用abort方法之后，XHR对象会停止触发事件，而且不再允许访问任何与响应有关的对象属性。在终止请求之后，还应该对XHR对象进行解引用操作`xhr = null `
 - HTTP头部信息
+  - 所有浏览器都会发送的头部信息
+    - Accept：浏览器能够处理的内容类型
+    - Accept-Charset：浏览器能够显示的字符集
+    - Accept-Encoding：浏览器能够处理的压缩编码
+    - Accept-Language：浏览器当前设置的语言
+    - Connection：浏览器与服务器之间连接的类型
+    - Cookie：当前页面设置的任何Cookie
+    - Host：发送请求的页面所在的域
+    - Referer：发送请求的页面的URI。正确拼写是referrer，只能将错就错
+    - User-Agent：浏览器的用户代理字符串
+  - setRequestHeader()
+    - 可以设置自定义的请求头部信息
+    - 两个参数
+      - 头部字段的名称和头部字段的值
+      - 必须在调用open之后且调用send之前调用setRequestHeader()
+    ```javascript
+    xhr.open("get", "example.txt", false)
+    xhr.setRequestHeader("MyHeader","MyValue")
+    xhr.send(null) 
+    ```
+      - 建议使用自定义头部信息，因为默认的头部信息和服务器之间可能存在某种响应关系
+  - getResponseHeader("MyHeader")
+    - 传入头部字段名称，取得相应的相应头部信息
+  - getAllResponseHeaders()
+    - 取得一个包含所有头部信息的长字符串，以多行文本内容的形式返回
 - GET请求
+  - 向服务器查询某些数据
 - POST请求
+  - 向服务器发送应该被保存的数据
 ### XMLHttpRequest 2级
 - FormData
+  - 为序列化表单以及创建与表单格式相同的数据提供了便利
+    ```javascript
+    var data = new FormData()
+    data.append("name", "lzm")
+    ```
+  - 可以直接向Formdata构造函数中传入表单元素
+    ```javascript
+    xhr.open("post", "example.php", true)
+    var form = document.getElementById("user-info")
+    xhr.send(new FormData(form))
+    ```
 - 超时设定
+  - XHR对象的timeout属性，表示请在等待响应对少毫秒之后就终止。在给timeout设定一个值之后，到了时间还没有响应就会调用ontimeout事件处理函数
+  ```javascript
+  xhr.open("get", "example.php", true)
+  xhr.timeout = 1000
+  xhr.ontimeout = function() {
+      alert("timeout")
+  }
+  xhr.send(null)
+  ``` 
 - overrideMimeType()方法
+  - 用于重写XHR响应的MIME类型
+    ```javascript
+    xhr.open("get", "text.php", true)
+    xhr.overrideMimeType("text/xml")
+    xhr.send(null)
+    ```
 ### 进度事件
+- 进度事件与种类
+  - 定义了与客户端服务器通信有关的时间
+  - 共6个进度事件
+    - loadstart：在接收到响应数据的第一个字节时触发
+    - progress：在接受响应期间不断地触发
+    - error：在请求发生错误时触发
+    - abort：在因为调用abort方法而终止连接时触发
+    - load：在接受完整的响应数据时触发
+    - loadend：在通信完成或者提前触发error、abort、load这类终止类型事件后触发
+  - 生命周期
+    - 首先会触发loadstart事件
+    - 接下来触发一次或多次progress事件
+    - 接下来触发error、abort、load事件中的一个
+    - 最后触发loadend事件
 - load事件
+  - Firefox引入load事件，用以替代readystatechange事件。因为响应接受完毕后触发load事件，因此没有必要去检查readyState属性
+  - onload事件处理程序会接受一个event对象，event.target就指向XHR对象实例
 - progress事件
+  - onprogress事件处理程序会接受一个event对象，除了包含target属性以外还包含额外的三个属性：lengthComputable、position(loaded)、totalSize(total);分别表示一个进度信息是否可用的布尔值，已接收到的字节数，根据Content-Length确定的预期字节数
+  - 必须在open之前添加onprogress事件处理程序
 ### 跨域资源共享
+- CORS(cross-origin resource sharing)
+  - 通过XHR实现Ajax通信的一个主要限制，来源于跨域安全策略。默认XHR只能访问与包含它的页面同一个域中的资源，安全策略可以预防某些恶意行为
+  - 核心思想：使用自定义的HTTP头部让浏览器与服务器进行沟通，从而决定请求或响应是否成功
+    ```JavaScript
+    请求url：
+    Origin: http://leezhimeng.com
+    响应url：
+    Access-Control-Allow-Origin: http://leezhimeng.com
+    ``` 
 - IE对CORS的实现
+  - 
 - 其他浏览器对CORS的实现
 - Preflighted Requests
 - 带凭据的请求
@@ -1430,6 +1579,18 @@ function createXHR(){
 
 ## 22.高级技巧
 ### 高级函数
+- 安全的类型检测
+  - 因为typeof操作符在检测引用类型时不够详细，instanceof操作符在存在多个全局作用域的情况下也会有很多问题
+  - 使用Object原生的toString()
+  ```javascript
+  //假设toString没有被篡改的情况下
+  function isArray(value) {
+      return Object.prototype.toString.call(value) == "[object Array]"
+  }
+  //检测是否有原生的JSON对象
+  var isNativeJSON = window.JSON && Object.prototype.toString.call(JSON) == "[object JSON]"
+  ```
+- 
 ### 防篡改对象
 ### 高级定时器
 ### 自定义事件
@@ -1443,12 +1604,282 @@ function createXHR(){
 - IE用户数据
 - Web存储机制
 - IndexedDB
+
+
 ## 24.最佳实践
 ### 可维护性
 ### 性能
 ### 部署
 
 # ES6
+## 8.迭代器(Iterator)和生成器(Generator)
+- 循环语句的问题：存在多层循环嵌套的时候，代码复杂度大大增加
+- 什么是迭代器
+  - 是一种特殊的对象
+  - 有一个next方法，每次调用都会返回一个对象，对象有两个属性：value和done
+  - 迭代器内部保存有一个指针，用来指向当前集合中的位置，每次调用next方法，都会返回下一个可用的值(对象)
+  ```javascript
+  //ES5手写创建迭代器
+  function createIterator(arr) {
+      var i = 0
+      //return 一个有next方法的对象
+      return {
+          next: function () {
+            var done = (i >= arr.length)
+
+            var value = done ? undefined : arr[i++]
+            
+            //return 一个有done和value属性的对象
+            return {
+                done: done,
+                value: value
+            }
+          }
+      }
+  }
+
+  var iterator = createIterator([1,2,3])
+  iterator.next()   //{ value: 1, done: false }
+  iterator.next()   //{ value: 2, done: false }
+  iterator.next()   //{ value: 3, done: false }
+  iterator.next()   //{ value: undefined, done: true }
+
+  //似乎还有一点复杂，两个地方用到了闭包，于是引出了生成器
+  ``` 
+- 什么是生成器
+  - 是一种返回迭代器的函数，通过*号来表示函数是一个生成器，会用到新关键字yield来指定调用迭代器的next方法时返回值及返回顺序
+    - 匿名函数，星号加在（建议紧贴）`function`和小括号之间`function *() {}`
+    - 具名函数，星号加在（建议紧贴）`function`和函数名之间`function *name() {}`
+    - 函数作为对象方法简写,星号加在（建议紧贴）函数名之前`*name() {}`
+    ```javascript
+    function *createIterator() {
+        yield 1
+        console.log('round 2')
+        yield 2
+        console.log('round 3')
+        yield 3
+    }
+
+    let iterator = createIterator()
+    iterator.next() //{ value: 1, done: false }
+    //在执行第二次next()之前，不会打印round 2
+    ```
+  - 生成器函数的一个很重要的细节：终止函数执行机制
+    - 每当执行完一条yield语句后函数就会自动停止执行，直到再次调用next方法
+  - yield的使用限制
+    - yield只能存在于生成器函数内部的作用域，不能存在于生成器的内部函数中。同return相似，return放在嵌套的内部函数中，只会return内部函数，并不会渗透出来return外部函数
+  - yield用法
+    - `yield 基本类型`一个next搞定
+    - `yield *可迭代对象`数组、set、map、字符串，需要多个next一个元素一个元素输出
+    - `yield 生成器`遍历生成器中的yield，需要多个next
+  - 生成器函数表达式
+    - 只需在function和参数小括号中间加上*号，不能用箭头函数来创建生成器
+  - 生成器作为对象的方法
+    ```javascript
+    let o = {
+        createIterator: function *(item) {
+            for(let i = 0 ; i < item.length ; i++) {
+                yield item[i]
+            }
+        }
+    }
+    let iterator = o.createIterator([1,2,3])
+
+    //ES6函数简写
+    let o = {
+        *createIterator(item) {
+            for(let i = 0 ; i < item.length ; i++) {
+                yield item[i]
+            }
+        }
+    }
+    let iterator = o.createIterator([1,2,3])
+    ```
+- 可迭代对象和for-of循环
+  - 可迭代对象
+    - 具有Symbol.iterator属性的对象，所有的集合对象和字符串都是可迭代对象
+    - Symbol.iterator中存储着一个可以返回一个作用于附属对象的迭代器的函数
+      - `可迭代对象[Symbol.iterator]()`
+    - 生成器会默认为Symbol.iterator属性赋值，因此所有通过生成器创建的迭代器都是可迭代对象
+  - for-of
+    - 只关注要处理的内容，即可迭代对象的值，而不用关注索引了(for-in就是关注索引)
+    - 原理：每循环一次，执行一次可迭代对象的next方法，并将迭代器返回结果对象的value属性赋值给一个变量，循环执行这一个过程，直至done为true(迭代器内部return会直接将done变成true，无论有没有后续yield)
+    - for-of用于不可迭代对象会抛出错误
+  - 访问默认迭代器
+    - 通过Symbol.iterator来访问对象默认的迭代器
+        ```javascript
+        let values = [1,2,3]
+        //js引擎处理for-of也会有类似的处理过程
+        let iterator = values[Symbol.iterator]()
+
+        iterator.next() //{ value: 1, done: false}
+        ```
+    - 检测对象是否是可迭代对象
+        ```javascript
+        function isIterable(object) {
+            return (typeof object[Symbol.iterator] === 'function')
+            //return Object.prototype.toString.call(object[Symbol.iterator] === '[object Function]')
+        }
+        ```
+  - 创建可迭代对象
+    - 默认情况下，开发者定义的对象都不是可迭代对象
+    - 如果给Symbol.iterator属性添加一个生成器，则可以将其变为可迭代对象
+        ```javascript
+        let iterableObject = {
+            arr: [],
+            *[Symbol.iterator]() {
+                for(let i of this.arr) {
+                    yield i
+                }           
+            }
+        }
+        iterableObject.arr.push(1,2,3)
+        for(let i of iterableObject) {
+            console.log(i)
+        }
+        //1
+        //2
+        //3
+        ```
+- 内建迭代器
+  - 集合对象迭代器
+    - 集合对象有3种类型：数组、map、set
+    - 都内建了三种迭代器
+      - entries()   返回一个迭代器，其value为数组存储的键值对
+      - values()    返回一个迭代器，其value为集合的值
+      - keys()      返回一个迭代器，其value为集合的键
+  - 字符串迭代器
+  - NodeList迭代器
+- 展开运算符与非数组可迭代对象
+  - 展开运算符可以将任意非数组可迭代对象转为数组
+  - `arr = [...set]`
+  - `arr = [...map]`
+  - `arr = [0, ...arr1, ...arr2]`
+  - `arr = [...string]`
+- 高级迭代器功能
+  - 给迭代器传递参数
+    - 如果给next方法传递参数，则这个参数就会替代生成器内部上一条yield的返回值
+      - 第一次调用next方法时传递参数没有意义，因为不存在上一条yield语句
+    ```javascript
+    function *createIterator() {
+        let first = yield 1
+        let second = yield first + 2
+        yield second + 3
+
+    }
+
+    let iterator = createIterator()
+    iterator.next() //{ value: 1, done: false}
+    iterator.next(4) //{ value: 6, done: false}
+    iterator.next(5) //{ value: 8, done: false}
+    ``` 
+  - 在迭代器中抛出错误
+    - 迭代器调用throw方法,可以使用try-catch捕获
+    ``` JavaScript
+    function *createIterator() {
+        let first = yield 1
+        let second
+        try {
+            second = yield first + 2
+        } catch(ex) {
+            second = first + 2
+        }
+
+        yield second + 3 
+    }
+    let iterator = createIterator()
+    iterator.next()     //{ value: 1, done: false}
+    iterator.next(4)    //{ value: 6, done: false}
+    iterator.throw(new Error('bom'))    //{ value: 9, done: false}
+    ```
+  - 生成器返回语句
+    - 默认最后一次有意义的调用next方法的value是undefined，可以通过return的方式为最后一次调用赋值，但再次调用next()的value依然是undefined
+    - for-of循环不会读到return的返回值，因为done变成true时就马上终止循环
+  - 委托生成器 
+    ```javascript
+    function *createNumberIterator() {
+        yield 1
+        return 2
+    }
+    function *createRepeatIterator(count) {
+        for(let i = 0; i < count ; i++) {
+            yield 'repeat' + i
+        }
+    }
+
+    function *createCombinedIterator() {
+        let result = yield *createNumberIterator()
+        yield result
+        yield *'rep'
+        yield *createRepeatIterator(result)
+        return 'done'
+    }
+
+    let iterator = createCombinedIterator()
+    
+    console.log(iterator.next())    //{ value: 1, done: false}
+    console.log(iterator.next())    //{ value: 2, done: false}
+    console.log(iterator.next())    //{ value: 'r', done: false}
+    console.log(iterator.next())    //{ value: 'e', done: false}
+    console.log(iterator.next())    //{ value: 'p', done: false}
+    console.log(iterator.next())    //{ value: 'repeat0', done: false}
+    console.log(iterator.next())    //{ value: 'repeat1', done: false}
+    console.log(iterator.next())    //{ value: 'done', done: true}
+    console.log(iterator.next())    //{ value: undefined, done: true}
+
+    ``` 
+- 异步任务执行
+  - 简单任务执行器
+    ```javascript
+    function run(taskrun){
+        let iter = taskrun()
+        let result = iter.next()
+
+        function step() {
+            if(!result.done){
+                console.log(result.value)
+                result = iter.next()
+                step()
+            }
+
+            /*while(!result.done){
+               console.log(result.value)
+                result = iter.next() 
+            }*/
+        }
+
+      step()
+    }   
+
+    function *generator(){
+        yield 1
+        yield 2
+        yield 3
+    }
+
+    run(generator)
+    //1
+    //2
+    //3
+    ``` 
+  - 向任务执行器传递数据
+    ```javascript
+    function step() {
+        while(!result.done){
+            result = iter.next(result.value)
+        }
+    }
+
+    function *generator() {
+        let first = yield 1
+        console.log(first) //1
+        first = yield first + 2
+        console.log(first) // 3 
+    }
+
+    ```
+  - 异步任务执行器
+    - 当`iterator.next().value`是一个函数时，任务执行器会限制性这个函数再将结果传入next方法
 ## 11.Promise与异步编程
 ### 异步编程
 - 什么是异步编程
@@ -1538,6 +1969,7 @@ function createXHR(){
     console.log('window')
     //promise
     //window
+
     setTimeOut(function() {
         //也将新任务推入了任务队列，只不过要求这个任务在500ms后执行，所以比window后显示
         console.log('setTimtout')
@@ -1642,6 +2074,7 @@ function createXHR(){
         console.log(c) //UnHandlePromiseRejectionWarning
     })
     ```
+
 - 执行器错误
   - 如果执行器内部抛出错误，则Promise的拒绝处理程序就会自动被调用
     ```javascript
